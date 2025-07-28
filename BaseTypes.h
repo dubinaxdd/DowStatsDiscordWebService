@@ -6,17 +6,20 @@ enum EventType: int
     LastMessagesIdAnswer = 1,
     CreateNewsMessage = 2,
     UpdateNewsMessage = 3,
-    CreateEventMessage = 4,
-    UpdateEventMessage = 5,
-    CreateTestMessage = 6,
-    UpdateTestMessage = 7,
-    AllMesagesReceive = 8,
-    NewsMessagesAnswer = 9,
-    EventsMessagesAnswer = 10,
-    TestMessagesAnswer = 11,
-    NewsMessagesEnd = 12,
-    EventsMessagesEnd = 13,
-    TestMessagesEnd = 14
+    DeleteNewsMessage = 4,
+    CreateEventMessage = 5,
+    UpdateEventMessage = 6,
+    DeleteEventMessage = 7,
+    CreateTestMessage = 8,
+    UpdateTestMessage = 9,
+    DeleteTestMessage = 10,
+    AllMesagesReceive = 11,
+    NewsMessagesAnswer = 12,
+    EventsMessagesAnswer = 13,
+    TestMessagesAnswer = 14,
+    NewsMessagesEnd = 15,
+    EventsMessagesEnd = 16,
+    TestMessagesEnd = 17
 };
 
 #endif // BASETYPES_H

@@ -122,6 +122,9 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
         }
 
         case DefaultMessage:{
+
+            qDebug() << "ASDASDASDASDASD" << messageType << obeject.value("d").toObject();
+
             if(messageType == "READY")
             {
                 QJsonObject readyObject = obeject.value("d").toObject();
@@ -160,6 +163,30 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
                     requestCnannelMessage(channelId, messageId, UpdateTestMessage);
             }
 
+            if(messageType == "MESSAGE_DELETE")
+            {
+                QJsonObject messageDelete = obeject.value("d").toObject();
+                QString channelId = messageDelete.value("channel_id").toString();
+                QString messageId = messageDelete.value("id").toString();
+                qDebug() << "INPUT DISCORD: MESSAGE_UPDATE" << channelId << messageId;
+
+                if(channelId == NEWS_CHANNEL_ID)
+                {
+                    removeMessage(messageId, &m_newsMessages);
+                    emit sendEvent(messageId, DeleteNewsMessage);
+                }
+                else if(channelId == EVENTS_CHANNEL_ID)
+                {
+                    removeMessage(messageId, &m_eventMessages);
+                    emit sendEvent(messageId, DeleteEventMessage);
+                }
+                else if(channelId == TEST_CHANNEL_ID)
+                {
+                    removeMessage(messageId, &m_testMessages);
+                    emit sendEvent(messageId, DeleteTestMessage);
+                }
+            }
+
             break;
         }
 
@@ -196,8 +223,6 @@ void DiscorsWebProcessor::requestCnannelMessages(QString channelId, QString last
         urlString = "https://discord.com/api/v10/channels/" + channelId + "/messages";
     else
         urlString = "https://discord.com/api/v10/channels/" + channelId + "/messages?before=" + lastMessageId;
-
-    qDebug() << urlString;
 
     newRequest.setUrl(QUrl(urlString));
     newRequest.setRawHeader("Authorization", QString(DISCORD_TOKEN).toLocal8Bit());
@@ -379,6 +404,19 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
     newMessage->content.replace(newMessage->attacmentImageUrl, "");
 
     return newMessage;
+}
+
+void DiscorsWebProcessor::removeMessage(QString messageId, QList<Message *> *messagesList)
+{
+    for(int i = 0; i < messagesList->count(); i++)
+    {
+        if (messagesList->at(i)->id == messageId)
+        {
+            delete messagesList->operator[](i);
+            messagesList->removeAt(i);
+            break;
+        }
+    }
 }
 
 void DiscorsWebProcessor::requestNextMessagesGroup()

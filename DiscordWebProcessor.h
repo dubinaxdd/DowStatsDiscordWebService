@@ -70,6 +70,7 @@ private:
     void requestCnannelMessage(QString channelId, QString messageId, EventType eventType);
     void receiveMessages(QNetworkReply* reply, EventType eventType);
     Message* parseMessage(QJsonObject* message);
+    void removeMessage(QString messageId, QList<Message*>* messagesList);
 
 private:
     QNetworkAccessManager* m_networkManager;

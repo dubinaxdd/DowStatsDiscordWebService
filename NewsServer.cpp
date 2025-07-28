@@ -83,15 +83,33 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
 
     switch (eventType){
         case EventType::CreateNewsMessage:
-        case EventType::UpdateNewsMessage: message = findMessage(messageId, p_newsMessages); break;
+        case EventType::UpdateNewsMessage:
+            message = findMessage(messageId, p_newsMessages);
+            messageObject.insert("content", messageToJson(message));
+            break;
+        case EventType::DeleteNewsMessage:
+            messageObject.insert("messageId", messageId);
+            break;
         case EventType::CreateEventMessage:
-        case EventType::UpdateEventMessage: message = findMessage(messageId, p_eventsMessages); break;
+        case EventType::UpdateEventMessage:
+            message = findMessage(messageId, p_eventsMessages);
+            messageObject.insert("content", messageToJson(message));
+            break;
+        case EventType::DeleteEventMessage:
+            messageObject.insert("messageId", messageId);
+            break;
         case EventType::CreateTestMessage:
-        case EventType::UpdateTestMessage: message = findMessage(messageId, p_testMessages); break;
+        case EventType::UpdateTestMessage:
+            message = findMessage(messageId, p_testMessages);
+            messageObject.insert("content", messageToJson(message));
+            break;
+        case EventType::DeleteTestMessage:
+            messageObject.insert("messageId", messageId);
+            break;
         default: break;
     }
 
-    messageObject.insert("content", messageToJson(message));
+
 
     QJsonDocument document;
     document.setObject(messageObject);
