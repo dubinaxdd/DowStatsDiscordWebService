@@ -53,6 +53,15 @@ void NewsServer::onMessageReceived(const QString &message)
 
     switch (opCode){
     case RequestLastMessagesId: sendLastMessagesId(client); break;
+    case RequestNewsFromIdByLimit:
+        sendMessagesFromIdByLimit(client, NewsMessagesAnswer, jsonObject.value("messageId").toString(), jsonObject.value("limit").toInt(), jsonObject.value("includeFirst").toBool(), p_newsMessages);
+        break;
+    case RequestEventsFromIdByLimit:
+        sendMessagesFromIdByLimit(client, EventsMessagesAnswer, jsonObject.value("messageId").toString(), jsonObject.value("limit").toInt(), jsonObject.value("includeFirst").toBool(), p_eventsMessages);
+        break;
+    case RequestTestFromIdByLimit:
+        sendMessagesFromIdByLimit(client, TestMessagesAnswer, jsonObject.value("messageId").toString(), jsonObject.value("limit").toInt(), jsonObject.value("includeFirst").toBool(), p_testMessages);
+        break;
     }
 }
 
@@ -82,17 +91,7 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
         default: break;
     }
 
-    QJsonObject contentObject;
-    contentObject.insert("id", message->id);
-    contentObject.insert("timestamp", message->timestamp);
-    contentObject.insert("content", message->content);
-    contentObject.insert("userName", message->userName);
-    contentObject.insert("userId", message->userId);
-    contentObject.insert("avatarId", message->avatarId);
-    contentObject.insert("avatarUrl", message->avatarUrl);
-    contentObject.insert("attacmentImageUrl", message->attacmentImageUrl);
-
-    messageObject.insert("content", contentObject);
+    messageObject.insert("content", messageToJson(message));
 
     QJsonDocument document;
     document.setObject(messageObject);
@@ -122,7 +121,7 @@ void NewsServer::sendLastMessagesId(QWebSocket *client)
 
 
     QJsonObject messageObject;
-    messageObject.insert("op", RequestLastMessagesId);
+    messageObject.insert("op", LastMessagesIdAnswer);
 
     messageObject.insert("news_last_message", newsLastMessageId);
     messageObject.insert("events_last_message", eventsLastMessageId);
@@ -132,6 +131,82 @@ void NewsServer::sendLastMessagesId(QWebSocket *client)
     message.setObject(messageObject);
 
     client->sendTextMessage(message.toJson().replace('\n',""));
+}
+
+void NewsServer::sendMessagesFromIdByLimit(QWebSocket *client, EventType eventType, QString messageId, int limit, bool includeFirst, QList<Message*>* messagesListPtr)
+{
+    QJsonObject messageObject;
+    QJsonArray messagesArray;
+
+    for (int i = 0; i < messagesListPtr->count(); i++)
+    {
+        if (messagesListPtr->at(i)->id == messageId)
+        {
+            if(!includeFirst)
+                i++;
+
+            if (i >= messagesListPtr->count())
+                return;
+
+            for (int j = i; j < messagesListPtr->count(); j++)
+            {
+                messagesArray.append(messageToJson(messagesListPtr->at(j)));
+
+                if (messagesArray.count() >= limit)
+                    break;
+            }
+
+            break;
+        }
+    }
+
+    if (messagesArray.isEmpty())
+    {
+
+
+        EventType endListReplyType;
+
+        switch (eventType) {
+            case NewsMessagesAnswer: endListReplyType = NewsMessagesEnd; break;
+            case EventsMessagesAnswer: endListReplyType = EventsMessagesEnd; break;
+            case TestMessagesAnswer: endListReplyType = TestMessagesEnd; break;
+            default: break;
+        }
+
+        messageObject.insert("op", endListReplyType);
+
+        QJsonDocument message;
+        message.setObject(messageObject);
+
+        client->sendTextMessage(message.toJson().replace('\n',""));
+        return;
+    }
+
+    messageObject.insert("op", eventType);
+    messageObject.insert("messages", messagesArray);
+
+    QJsonDocument message;
+    message.setObject(messageObject);
+
+    client->sendTextMessage(message.toJson().replace('\n',""));
+}
+
+QJsonObject NewsServer::messageToJson(Message * message)
+{
+    QJsonObject contentObject;
+    contentObject.insert("id", message->id);
+    contentObject.insert("timestamp", message->timestamp);
+    contentObject.insert("content", message->content);
+    contentObject.insert("userName", message->userName);
+    contentObject.insert("userId", message->userId);
+    contentObject.insert("avatarId", message->avatarId);
+    contentObject.insert("avatarUrl", message->avatarUrl);
+    contentObject.insert("attacmentImageId", message->attacmentImageId);
+    contentObject.insert("attacmentImageUrl", message->attacmentImageUrl);
+    contentObject.insert("attacmentImageWidth", message->attacmentImageWidth);
+    contentObject.insert("attacmentImageHeight", message->attacmentImageHeight);
+
+    return contentObject;
 }
 
 Message *NewsServer::findMessage(QString messageId, QList<Message *> *messagesListPtr)

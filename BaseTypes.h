@@ -10,7 +10,13 @@ enum EventType: int
     UpdateEventMessage = 5,
     CreateTestMessage = 6,
     UpdateTestMessage = 7,
-    AllMesagesReceive = 8
+    AllMesagesReceive = 8,
+    NewsMessagesAnswer = 9,
+    EventsMessagesAnswer = 10,
+    TestMessagesAnswer = 11,
+    NewsMessagesEnd = 12,
+    EventsMessagesEnd = 13,
+    TestMessagesEnd = 14
 };
 
 #endif // BASETYPES_H

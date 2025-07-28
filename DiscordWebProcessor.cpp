@@ -83,7 +83,7 @@ void DiscorsWebProcessor::sendResume()
 
 void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
 {
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(messgae.toUtf8());
+    QJsonDocument jsonDocument = QJsonDocument::fromJson(messgae.toLatin1());
 
     if (!jsonDocument.isObject())
         return;
@@ -284,7 +284,7 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         }
 
         if (!finded)
-            temp->append(message);
+            temp->push_front(message);
 
         emit sendEvent(message->id, eventType);
 
@@ -329,7 +329,10 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
 
             if (contentType == "image/png" || contentType == "image/jpeg")
             {
+                newMessage->attacmentImageId = attachmentObject.value("id").toString();
                 newMessage->attacmentImageUrl = attachmentObject.value("url").toString();
+                newMessage->attacmentImageWidth = attachmentObject.value("width").toInt();
+                newMessage->attacmentImageHeight = attachmentObject.value("height").toInt();
                 break;
             }
         }
@@ -348,7 +351,12 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
 
                 if (contentType == "image")
                 {
+                    newMessage->attacmentImageId = embedsObject.value("url").toString();
                     newMessage->attacmentImageUrl = embedsObject.value("url").toString();
+
+                    QJsonObject thumbnail = embedsObject.value("thumbnail").toObject();
+                    newMessage->attacmentImageWidth = thumbnail.value("width").toInt();
+                    newMessage->attacmentImageHeight = thumbnail.value("height").toInt();
                     break;
                 }
             }

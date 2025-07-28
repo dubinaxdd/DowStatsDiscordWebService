@@ -24,7 +24,10 @@ struct Message{
     QString userId = "";
     QString avatarId = "";
     QString avatarUrl = "";
+    QString attacmentImageId = "";
     QString attacmentImageUrl = "";
+    int attacmentImageWidth = 0;
+    int attacmentImageHeight = 0;
     MessageType messageType = Unknown;
 };
 

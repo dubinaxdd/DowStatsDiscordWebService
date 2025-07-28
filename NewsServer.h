@@ -20,8 +20,10 @@ public:
         RequestLastMessagesId = 1,
         RequestNewsFromIdToId = 2,
         RequestEventsFromIdToId = 3,
-        RequestNewsFromIdByLimit = 4,
-        RequestEventsFromIdByLimit = 5
+        RequestTestFromIdToId = 4,
+        RequestNewsFromIdByLimit = 5,
+        RequestEventsFromIdByLimit = 6,
+        RequestTestFromIdByLimit = 7
     };
 
     void setNewsMessagesListPtr(QList<Message *> *newsMeessagesList);
@@ -37,6 +39,9 @@ public slots:
 
 private:
     void sendLastMessagesId(QWebSocket* client);
+    void sendMessagesFromIdByLimit(QWebSocket* client, EventType eventType, QString messageId, int limit, bool includeFirst, QList<Message*>* messagesListPtr);
+    QJsonObject messageToJson(Message*);
+
     Message* findMessage(QString messageId, QList<Message*>* messagesListPtr);
 
 private:
