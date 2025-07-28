@@ -1,16 +1,22 @@
 #include "DiscordWebProcessor.h"
 #include <QNetworkRequest>
 #include <QNetworkReply>
-#include "defines.h"
 #include "QJsonDocument"
 #include "QJsonArray"
 #include "QJsonObject"
+
 
 DiscorsWebProcessor::DiscorsWebProcessor(QObject *parent)
     : QObject{parent}
     , m_networkManager(new QNetworkAccessManager(this))
 {
-    requestCnannelMessages(TEST_CHANNEL_ID);
+    qRegisterMetaType<EventType>("EventType");
+
+    connect(&requestNextMessageGroupTimer, &QTimer::timeout, this,  &DiscorsWebProcessor::requestNextMessagesGroup, Qt::QueuedConnection);
+    requestNextMessageGroupTimer.setInterval(2000);
+    requestNextMessageGroupTimer.start();
+
+    requestNextMessagesGroup();
 
     connect(&m_discordWebSocket, &QWebSocket::connected, this, [&]{qDebug() << "DiscorWebSocket connected"; m_discordWebSocketConnected = true; m_reconnectTimer.stop();}, Qt::QueuedConnection);
     connect(&m_discordWebSocket, &QWebSocket::disconnected, this,  &DiscorsWebProcessor::onDisconnected, Qt::QueuedConnection);
@@ -19,7 +25,6 @@ DiscorsWebProcessor::DiscorsWebProcessor(QObject *parent)
     connect(&m_heartbeatTimer, &QTimer::timeout, this, &DiscorsWebProcessor::sendHeartbeat, Qt::QueuedConnection);
 
     m_discordWebSocket.open(QUrl("wss://gateway.discord.gg/?v=10&encoding=json"));
-
 
     connect(&m_reconnectTimer, &QTimer::timeout, this, &DiscorsWebProcessor::reconnect, Qt::QueuedConnection);
 
@@ -44,7 +49,7 @@ void DiscorsWebProcessor::sendIdentify()
     dObject.insert("intents", 1 << 9);
 
     QJsonObject identifyObject;
-    identifyObject.insert("op", 2);
+    identifyObject.insert("op", IdentifyMessage);
     identifyObject.insert("d", dObject);
 
     QJsonDocument jsonDocument;
@@ -61,14 +66,13 @@ void DiscorsWebProcessor::sendResume()
 
     qDebug() << "OTPUT DISCORD: RESUME" << lastMessageS << m_sessionId;
 
-
     QJsonObject dObject;
     dObject.insert("token", /*"ASDASFDSDFFGNBDFGHJDSRTJHSDFGNSRTJ"*/DISCORD_TOKEN);
     dObject.insert("session_id", m_sessionId);
     dObject.insert("seq", lastMessageS.toInt());
 
     QJsonObject resumeObject;
-    resumeObject.insert("op", 6);
+    resumeObject.insert("op", ResumeMessage);
     resumeObject.insert("d", dObject);
 
     QJsonDocument jsonDocument;
@@ -94,7 +98,7 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
     QString messageType = obeject.value("t").toString();
 
     switch (opcode){
-        case 10:
+        case HelloMessage:
         {
             QJsonObject helloObject = obeject.value("d").toObject();
             int heartbeatInterval = helloObject.value("heartbeat_interval").toInt();
@@ -117,7 +121,7 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
             break;
         }
 
-        case 0:{
+        case DefaultMessage:{
             if(messageType == "READY")
             {
                 QJsonObject readyObject = obeject.value("d").toObject();
@@ -132,7 +136,13 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
                 QString channelId = messageCreate.value("channel_id").toString();
                 QString messageId = messageCreate.value("id").toString();
                 qDebug() << "INPUT DISCORD: MESSAGE_CREATE" << channelId << messageId;
-                requestCnannelMessage(channelId, messageId);
+
+                if(channelId == NEWS_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, CreateNewsMessage);
+                else if(channelId == EVENTS_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, CreateEventMessage);
+                else if(channelId == TEST_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, CreateTestMessage);
             }
 
             if(messageType == "MESSAGE_UPDATE")
@@ -141,18 +151,24 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
                 QString channelId = messageUpdate.value("channel_id").toString();
                 QString messageId = messageUpdate.value("id").toString();
                 qDebug() << "INPUT DISCORD: MESSAGE_UPDATE" << channelId << messageId;
-                requestCnannelMessage(channelId, messageId);
+
+                if(channelId == NEWS_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, UpdateNewsMessage);
+                else if(channelId == EVENTS_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, UpdateEventMessage);
+                else if(channelId == TEST_CHANNEL_ID)
+                    requestCnannelMessage(channelId, messageId, UpdateTestMessage);
             }
 
             break;
         }
 
-        case 11:{
+        case HertbeatAnsverMessage:{
             qDebug() << "INPUT DISCORD: HEARTBEAT ANSWER" << lastMessageS;
             break;
         }
 
-        case 7:{
+        case ReconnectMessage:{
             qDebug() << "INPUT DISCORD: RECONNECT" << lastMessageS;
             m_isPlannedReconnect = true;
             m_discordWebSocket.close();
@@ -160,13 +176,13 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
             break;
         }
 
-        case 9:{
+        case InvalidSessionMessage:{
             qDebug() << "INPUT DISCORD: Invalid Session" << lastMessageS;
             sendIdentify();
             break;
         }
 
-        default: qDebug() << "INPUT DISCORD: Unknown message" << messgae << lastMessageS;
+        default: qDebug() << "INPUT DISCORD: Unknown message" << messgae << lastMessageS; break;
     }
 }
 
@@ -184,17 +200,14 @@ void DiscorsWebProcessor::requestCnannelMessages(QString channelId)
     newRequest.setRawHeader("User-Agent", "DowStatsClient");
     newRequest.setRawHeader("Content-Type","application/json");
 
-    m_readyToRequest = false;
-
     QNetworkReply *reply = m_networkManager->get(newRequest);
 
     QObject::connect(reply, &QNetworkReply::finished, this, [=](){
-        receiveMessages(reply);
-        m_readyToRequest = true;
+        receiveMessages(reply, AllMesagesReceive);
     });
 }
 
-void DiscorsWebProcessor::requestCnannelMessage(QString channelId, QString messageId)
+void DiscorsWebProcessor::requestCnannelMessage(QString channelId, QString messageId, EventType eventType)
 {
     QNetworkRequest newRequest;
 
@@ -206,17 +219,14 @@ void DiscorsWebProcessor::requestCnannelMessage(QString channelId, QString messa
     newRequest.setRawHeader("User-Agent", "DowStatsClient");
     newRequest.setRawHeader("Content-Type","application/json");
 
-    m_readyToRequest = false;
-
     QNetworkReply *reply = m_networkManager->get(newRequest);
 
     QObject::connect(reply, &QNetworkReply::finished, this, [=](){
-        receiveMessages(reply);
-        m_readyToRequest = true;
+        receiveMessages(reply, eventType);
     });
 }
 
-void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply)
+void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventType)
 {
     if (reply->error() != QNetworkReply::NoError)
     {
@@ -232,9 +242,18 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply)
         for (auto item : jsonDocument.array())
         {
             QJsonObject object = item.toObject();
-            m_messages.append(parseMessage(&object));
 
-            qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
+            auto message = parseMessage(&object);
+
+            switch(message->messageType)
+            {
+                case NewsMessage: m_newsMessages.append(message); break;
+                case EventMessage: m_eventMessages.append(message); break;
+                case TestMessage: m_testMessages.append(message); break;
+                case Unknown: break;
+            }
+
+            //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
         }
     }
     else if (jsonDocument.isObject())
@@ -242,9 +261,19 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply)
         QJsonObject object = jsonDocument.object();
         auto message = parseMessage(&object);
 
+        QList<Message*>* temp;
+
+        switch(message->messageType)
+        {
+        case NewsMessage: temp = &m_newsMessages; break;
+        case EventMessage: temp = &m_eventMessages; break;
+        case TestMessage: temp = &m_testMessages; break;
+        case Unknown: break;
+        }
+
         bool finded = false;
 
-        for (auto& item : m_messages) {
+        for (auto& item : *temp) {
             if(item->id == message->id)
             {
                 delete item;
@@ -255,9 +284,11 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply)
         }
 
         if (!finded)
-            m_messages.append(message);
+            temp->append(message);
 
-        qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
+        emit sendEvent(message->id, eventType);
+
+        //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
     }
 }
 
@@ -265,7 +296,19 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
 {
     Message* newMessage = new Message();
 
+    QString channelId = message->value("channel_id").toString();
+
     newMessage->id = message->value("id").toString();
+
+    if (channelId == NEWS_CHANNEL_ID)
+        newMessage->messageType = NewsMessage;
+
+    if (channelId == EVENTS_CHANNEL_ID)
+        newMessage->messageType = EventMessage;
+
+    if (channelId == TEST_CHANNEL_ID)
+        newMessage->messageType = TestMessage;
+
     newMessage->content = message->value("content").toString();
     newMessage->timestamp = message->value("timestamp").toString();
 
@@ -317,13 +360,37 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
     return newMessage;
 }
 
+void DiscorsWebProcessor::requestNextMessagesGroup()
+{
+    requestCnannelMessages(m_messageGroupChannelId.last());
+    m_messageGroupChannelId.removeLast();
+
+    if(m_messageGroupChannelId.isEmpty())
+        requestNextMessageGroupTimer.stop();
+}
+
+QList<Message *>* DiscorsWebProcessor::newsMessages()
+{
+    return &m_newsMessages;
+}
+
+QList<Message *>* DiscorsWebProcessor::eventMessages()
+{
+    return &m_eventMessages;
+}
+
+QList<Message *> *DiscorsWebProcessor::testMessages()
+{
+    return &m_testMessages;
+}
+
 void DiscorsWebProcessor::sendHeartbeat()
 {
     if (!m_discordWebSocketConnected)
         return;
 
     qDebug() << "OTPUT DISCORD: HEARTBEAT" << lastMessageS;
-    m_discordWebSocket.sendTextMessage("{\"op\": 1,\"d\":" + lastMessageS +"}");
+    m_discordWebSocket.sendTextMessage("{\"op\": " + QString::number(HertbeatMessge)+ ",\"d\":" + lastMessageS +"}");
 }
 
 void DiscorsWebProcessor::onDisconnected()

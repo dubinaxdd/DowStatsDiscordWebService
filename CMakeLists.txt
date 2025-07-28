@@ -17,6 +17,9 @@ add_executable(DowStatsDiscordWebService
   defines.h
   DiscordWebProcessor.h
   DiscordWebProcessor.cpp
+  NewsServer.h
+  NewsServer.cpp
+  BaseTypes.h
 )
 
 
