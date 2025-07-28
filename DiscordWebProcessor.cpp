@@ -186,13 +186,18 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
     }
 }
 
-void DiscorsWebProcessor::requestCnannelMessages(QString channelId)
+void DiscorsWebProcessor::requestCnannelMessages(QString channelId, QString lastMessageId)
 {
     QNetworkRequest newRequest;
 
-    QString urlString = "https://discord.com/api/v10/channels/" + channelId + "/messages";
+    QString urlString;
 
-    //QString urlString = "https://discord.com/api/v10/channels/" + channelId;
+    if (lastMessageId.isEmpty())
+        urlString = "https://discord.com/api/v10/channels/" + channelId + "/messages";
+    else
+        urlString = "https://discord.com/api/v10/channels/" + channelId + "/messages?before=" + lastMessageId;
+
+    qDebug() << urlString;
 
     newRequest.setUrl(QUrl(urlString));
     newRequest.setRawHeader("Authorization", QString(DISCORD_TOKEN).toLocal8Bit());
@@ -239,7 +244,9 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
 
     if (jsonDocument.isArray())
     {
-        for (auto item : jsonDocument.array())
+        QJsonArray jsonArray = jsonDocument.array();
+
+        for (auto item : jsonArray)
         {
             QJsonObject object = item.toObject();
 
@@ -247,14 +254,18 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
 
             switch(message->messageType)
             {
-                case NewsMessage: m_newsMessages.append(message); break;
-                case EventMessage: m_eventMessages.append(message); break;
-                case TestMessage: m_testMessages.append(message); break;
+                case NewsMessage: m_newsMessages.append(message); m_newsLastMessageId = message->id; break;
+                case EventMessage: m_eventMessages.append(message); m_eventsLastMessageId = message->id; break;
+                case TestMessage: m_testMessages.append(message); m_testLastMessageId = message->id; break;
                 case Unknown: break;
             }
 
             //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
         }
+
+        if (jsonArray.count() < 50)
+            m_messageGroupChannelId.removeLast();
+
     }
     else if (jsonDocument.isObject())
     {
@@ -290,6 +301,8 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
 
         //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
     }
+
+    m_readyToNextRequest = true;
 }
 
 Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
@@ -370,11 +383,30 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
 
 void DiscorsWebProcessor::requestNextMessagesGroup()
 {
-    requestCnannelMessages(m_messageGroupChannelId.last());
-    m_messageGroupChannelId.removeLast();
-
     if(m_messageGroupChannelId.isEmpty())
+    {
         requestNextMessageGroupTimer.stop();
+        return;
+    }
+
+    if (!m_readyToNextRequest)
+        return;
+
+    QString currentGroup = m_messageGroupChannelId.last();
+    QString lastMessageId = "";
+
+    if (currentGroup == NEWS_CHANNEL_ID)
+        lastMessageId = m_newsLastMessageId;
+
+    if (currentGroup == EVENTS_CHANNEL_ID)
+        lastMessageId = m_eventsLastMessageId;
+
+    if (currentGroup == TEST_CHANNEL_ID)
+        lastMessageId = m_testLastMessageId;
+
+    qDebug() << "RequestChannel messages" << currentGroup << lastMessageId;
+    bool m_readyToNextRequest = false;
+    requestCnannelMessages(currentGroup, lastMessageId);
 }
 
 QList<Message *>* DiscorsWebProcessor::newsMessages()

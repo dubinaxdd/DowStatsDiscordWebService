@@ -66,7 +66,7 @@ private slots:
     void requestNextMessagesGroup();
 
 private:
-    void requestCnannelMessages(QString channelId);
+    void requestCnannelMessages(QString channelId, QString lastMessageId);
     void requestCnannelMessage(QString channelId, QString messageId, EventType eventType);
     void receiveMessages(QNetworkReply* reply, EventType eventType);
     Message* parseMessage(QJsonObject* message);
@@ -86,10 +86,14 @@ private:
     QList<Message*> m_eventMessages;
     QList<Message*> m_testMessages;
 
-    QTimer m_reconnectTimer;
+    QString m_newsLastMessageId = "";
+    QString m_eventsLastMessageId = "";
+    QString m_testLastMessageId = "";
 
+    QTimer m_reconnectTimer;
     QTimer requestNextMessageGroupTimer;
     QStringList m_messageGroupChannelId = {TEST_CHANNEL_ID, EVENTS_CHANNEL_ID, NEWS_CHANNEL_ID};
+    bool m_readyToNextRequest = true;
 
 };
 
