@@ -122,9 +122,6 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
         }
 
         case DefaultMessage:{
-
-            qDebug() << "ASDASDASDASDASD" << messageType << obeject.value("d").toObject();
-
             if(messageType == "READY")
             {
                 QJsonObject readyObject = obeject.value("d").toObject();
