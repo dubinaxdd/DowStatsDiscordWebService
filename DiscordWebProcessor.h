@@ -16,6 +16,15 @@ enum MessageType: int
     Unknown
 };
 
+struct Gateway {
+    int maxConcurrency;
+    int remaining;
+    int resetAfter;
+    int total;
+    int shards;
+    QString url;
+};
+
 struct Message{
     QString id = "";
     QString timestamp = "";
@@ -64,13 +73,16 @@ private slots:
     void onDisconnected();
     void reconnect();
     void requestNextMessagesGroup();
+    void receiveGateway(QNetworkReply* reply);
 
 private:
+    void requestGateway();
     void requestCnannelMessages(QString channelId, QString lastMessageId);
     void requestCnannelMessage(QString channelId, QString messageId, EventType eventType);
     void receiveMessages(QNetworkReply* reply, EventType eventType);
     Message* parseMessage(QJsonObject* message);
     void removeMessage(QString messageId, QList<Message*>* messagesList);
+    void connectDiscordWebsocket();
 
 private:
     QNetworkAccessManager* m_networkManager;
@@ -95,6 +107,8 @@ private:
     QTimer requestNextMessageGroupTimer;
     QStringList m_messageGroupChannelId = {TEST_CHANNEL_ID, EVENTS_CHANNEL_ID, NEWS_CHANNEL_ID};
     bool m_readyToNextRequest = true;
+
+    Gateway m_gateway;
 
 };
 

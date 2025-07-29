@@ -14,9 +14,8 @@ DiscorsWebProcessor::DiscorsWebProcessor(QObject *parent)
 
     connect(&requestNextMessageGroupTimer, &QTimer::timeout, this,  &DiscorsWebProcessor::requestNextMessagesGroup, Qt::QueuedConnection);
     requestNextMessageGroupTimer.setInterval(2000);
-    requestNextMessageGroupTimer.start();
 
-    requestNextMessagesGroup();
+    requestGateway();
 
     connect(&m_discordWebSocket, &QWebSocket::connected, this, [&]{qDebug() << "DiscorWebSocket connected"; m_discordWebSocketConnected = true; m_reconnectTimer.stop();}, Qt::QueuedConnection);
     connect(&m_discordWebSocket, &QWebSocket::disconnected, this,  &DiscorsWebProcessor::onDisconnected, Qt::QueuedConnection);
@@ -24,15 +23,8 @@ DiscorsWebProcessor::DiscorsWebProcessor(QObject *parent)
 
     connect(&m_heartbeatTimer, &QTimer::timeout, this, &DiscorsWebProcessor::sendHeartbeat, Qt::QueuedConnection);
 
-    m_discordWebSocket.open(QUrl("wss://gateway.discord.gg/?v=10&encoding=json"));
-
     connect(&m_reconnectTimer, &QTimer::timeout, this, &DiscorsWebProcessor::reconnect, Qt::QueuedConnection);
-
     m_reconnectTimer.setInterval(5000);
-    m_reconnectTimer.start();
-
-    //m_discordWebSocket.open(QUrl("wss://gateway.discord.gg/"));
-
 }
 
 void DiscorsWebProcessor::sendIdentify()
@@ -67,7 +59,7 @@ void DiscorsWebProcessor::sendResume()
     qDebug() << "OTPUT DISCORD: RESUME" << lastMessageS << m_sessionId;
 
     QJsonObject dObject;
-    dObject.insert("token", /*"ASDASFDSDFFGNBDFGHJDSRTJHSDFGNSRTJ"*/DISCORD_TOKEN);
+    dObject.insert("token", DISCORD_TOKEN);
     dObject.insert("session_id", m_sessionId);
     dObject.insert("seq", lastMessageS.toInt());
 
@@ -202,7 +194,11 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
 
         case InvalidSessionMessage:{
             qDebug() << "INPUT DISCORD: Invalid Session" << lastMessageS;
-            sendIdentify();
+            m_reconnectAdress = m_gateway.url;
+            m_isFirstConnect = true;
+            m_discordWebSocket.close();
+            //connectDiscordWebsocket();
+            //sendIdentify();
             break;
         }
 
@@ -325,6 +321,8 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
     }
 
     m_readyToNextRequest = true;
+
+    reply->deleteLater();
 }
 
 Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
@@ -416,6 +414,15 @@ void DiscorsWebProcessor::removeMessage(QString messageId, QList<Message *> *mes
     }
 }
 
+void DiscorsWebProcessor::connectDiscordWebsocket()
+{
+    // m_discordWebSocket.open(QUrl("wss://gateway.discord.gg/?v=10&encoding=json"));
+    m_discordWebSocket.open(QUrl(m_gateway.url));
+    m_isFirstConnect = true;
+    m_reconnectTimer.start();
+    requestNextMessageGroupTimer.start();
+}
+
 void DiscorsWebProcessor::requestNextMessagesGroup()
 {
     if(m_messageGroupChannelId.isEmpty())
@@ -442,6 +449,56 @@ void DiscorsWebProcessor::requestNextMessagesGroup()
     qDebug() << "RequestChannel messages" << currentGroup << lastMessageId;
     bool m_readyToNextRequest = false;
     requestCnannelMessages(currentGroup, lastMessageId);
+}
+
+void DiscorsWebProcessor::receiveGateway(QNetworkReply *reply)
+{
+    if (reply->error() != QNetworkReply::NoError)
+    {
+        reply->deleteLater();
+        return;
+    }
+
+    QByteArray replyByteArray = reply->readAll();
+    QJsonDocument jsonDocument = QJsonDocument::fromJson(replyByteArray);
+
+    if (!jsonDocument.isObject())
+        return;
+
+
+    QJsonObject object = jsonDocument.object();
+
+    QJsonObject sessionStartLimits = object.value("session_start_limit").toObject();
+    m_gateway.maxConcurrency = sessionStartLimits.value("max_concurrency").toInt();
+    m_gateway.remaining = sessionStartLimits.value("remaining").toInt();
+    m_gateway.resetAfter = sessionStartLimits.value("reset_after").toInt();
+    m_gateway.total = sessionStartLimits.value("total").toInt();
+    m_gateway.shards = object.value("shards").toInt();
+    m_gateway.url = object.value("url").toString();
+
+    connectDiscordWebsocket();
+
+    reply->deleteLater();
+}
+
+void DiscorsWebProcessor::requestGateway()
+{
+    QNetworkRequest newRequest;
+
+    QString urlString = "https://discord.com/api/v10/gateway/bot";
+
+
+    newRequest.setUrl(QUrl(urlString));
+    newRequest.setRawHeader("Authorization", QString(DISCORD_TOKEN).toLocal8Bit());
+    newRequest.setRawHeader("Host", "discord.com");
+    newRequest.setRawHeader("User-Agent", "DowStatsClient");
+    newRequest.setRawHeader("Content-Type","application/json");
+
+    QNetworkReply *reply = m_networkManager->get(newRequest);
+
+    QObject::connect(reply, &QNetworkReply::finished, this, [=](){
+        receiveGateway(reply);
+    });
 }
 
 QList<Message *>* DiscorsWebProcessor::newsMessages()
