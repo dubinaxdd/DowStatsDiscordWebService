@@ -35,16 +35,21 @@ struct Message{
     QString avatarUrl = "";
     QString attacmentImageId = "";
     QString attacmentImageUrl = "";
+    QString attacmentImageType = "";
     int attacmentImageWidth = 0;
     int attacmentImageHeight = 0;
     MessageType messageType = Unknown;
+    bool needLoadAttachmentImage = false;
+    bool needSendEvent = false;
+    bool avatarReady = false;
+    bool attachmentImageReady = false;
 };
 
-class DiscorsWebProcessor : public QObject
+class DiscordWebProcessor : public QObject
 {
     Q_OBJECT
 public:
-    explicit DiscorsWebProcessor(QObject *parent = nullptr);
+    explicit DiscordWebProcessor(QObject *parent = nullptr);
 
     enum OpCode: int{
         DefaultMessage = 0,
@@ -75,6 +80,9 @@ private slots:
     void requestNextMessagesGroup();
     void receiveGateway(QNetworkReply* reply);
 
+    void receiveUserAvatar(QNetworkReply* reply, Message *message, EventType eventType);
+    void receiveAttachmentImage(QNetworkReply* reply, Message *message, EventType eventType);
+
 private:
     void requestGateway();
     void requestCnannelMessages(QString channelId, QString lastMessageId);
@@ -83,6 +91,20 @@ private:
     Message* parseMessage(QJsonObject* message);
     void removeMessage(QString messageId, QList<Message*>* messagesList);
     void connectDiscordWebsocket();
+
+    void requestAttachmentImage(Message* message, EventType eventType);
+    void requestUserAvatar(Message* message, EventType eventType);
+
+    QString getAttachmentImagePath(Message* message);
+    QString getAttachmentImageUrl(Message* message);
+
+    QString getAavatarImagePath(Message* message);
+    QString getAvatarImageUrl(Message* message);
+
+    void sendEventMessage(Message* message, EventType eventType);
+
+    void updateAvatar(QList<Message *> *messagesList, Message* message);
+
 
 private:
     QNetworkAccessManager* m_networkManager;
@@ -109,7 +131,6 @@ private:
     bool m_readyToNextRequest = true;
 
     Gateway m_gateway;
-
 };
 
 #endif // DISCORDWEBPROCESSOR_H

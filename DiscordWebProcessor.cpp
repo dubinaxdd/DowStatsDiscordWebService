@@ -1,33 +1,35 @@
 #include "DiscordWebProcessor.h"
 #include <QNetworkRequest>
 #include <QNetworkReply>
-#include "QJsonDocument"
-#include "QJsonArray"
-#include "QJsonObject"
+#include <QJsonDocument>
+#include <QJsonArray>
+#include <QJsonObject>
+#include <QFile>
+#include <QDir>
+#include <QCoreApplication>
 
-
-DiscorsWebProcessor::DiscorsWebProcessor(QObject *parent)
+DiscordWebProcessor::DiscordWebProcessor(QObject *parent)
     : QObject{parent}
     , m_networkManager(new QNetworkAccessManager(this))
 {
     qRegisterMetaType<EventType>("EventType");
 
-    connect(&requestNextMessageGroupTimer, &QTimer::timeout, this,  &DiscorsWebProcessor::requestNextMessagesGroup, Qt::QueuedConnection);
+    connect(&requestNextMessageGroupTimer, &QTimer::timeout, this,  &DiscordWebProcessor::requestNextMessagesGroup, Qt::QueuedConnection);
     requestNextMessageGroupTimer.setInterval(2000);
 
     requestGateway();
 
     connect(&m_discordWebSocket, &QWebSocket::connected, this, [&]{qDebug() << "DiscorWebSocket connected"; m_discordWebSocketConnected = true; m_reconnectTimer.stop();}, Qt::QueuedConnection);
-    connect(&m_discordWebSocket, &QWebSocket::disconnected, this,  &DiscorsWebProcessor::onDisconnected, Qt::QueuedConnection);
-    connect(&m_discordWebSocket, &QWebSocket::textMessageReceived, this, &DiscorsWebProcessor::readDiscordWebSocket, Qt::QueuedConnection);
+    connect(&m_discordWebSocket, &QWebSocket::disconnected, this,  &DiscordWebProcessor::onDisconnected, Qt::QueuedConnection);
+    connect(&m_discordWebSocket, &QWebSocket::textMessageReceived, this, &DiscordWebProcessor::readDiscordWebSocket, Qt::QueuedConnection);
 
-    connect(&m_heartbeatTimer, &QTimer::timeout, this, &DiscorsWebProcessor::sendHeartbeat, Qt::QueuedConnection);
+    connect(&m_heartbeatTimer, &QTimer::timeout, this, &DiscordWebProcessor::sendHeartbeat, Qt::QueuedConnection);
 
-    connect(&m_reconnectTimer, &QTimer::timeout, this, &DiscorsWebProcessor::reconnect, Qt::QueuedConnection);
+    connect(&m_reconnectTimer, &QTimer::timeout, this, &DiscordWebProcessor::reconnect, Qt::QueuedConnection);
     m_reconnectTimer.setInterval(5000);
 }
 
-void DiscorsWebProcessor::sendIdentify()
+void DiscordWebProcessor::sendIdentify()
 {
     QJsonObject propertiesObject;
     propertiesObject.insert("os", "windows");
@@ -51,7 +53,7 @@ void DiscorsWebProcessor::sendIdentify()
     qDebug() << "OUTPUT DISCORD: IDENTIFY";
 }
 
-void DiscorsWebProcessor::sendResume()
+void DiscordWebProcessor::sendResume()
 {
     if (!m_discordWebSocketConnected)
         return;
@@ -73,7 +75,7 @@ void DiscorsWebProcessor::sendResume()
     m_discordWebSocket.sendTextMessage(jsonDocument.toJson().replace("\n",""));
 }
 
-void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
+void DiscordWebProcessor::readDiscordWebSocket(QString messgae)
 {
     QJsonDocument jsonDocument = QJsonDocument::fromJson(messgae.toLatin1());
 
@@ -206,7 +208,7 @@ void DiscorsWebProcessor::readDiscordWebSocket(QString messgae)
     }
 }
 
-void DiscorsWebProcessor::requestCnannelMessages(QString channelId, QString lastMessageId)
+void DiscordWebProcessor::requestCnannelMessages(QString channelId, QString lastMessageId)
 {
     QNetworkRequest newRequest;
 
@@ -230,7 +232,7 @@ void DiscorsWebProcessor::requestCnannelMessages(QString channelId, QString last
     });
 }
 
-void DiscorsWebProcessor::requestCnannelMessage(QString channelId, QString messageId, EventType eventType)
+void DiscordWebProcessor::requestCnannelMessage(QString channelId, QString messageId, EventType eventType)
 {
     QNetworkRequest newRequest;
 
@@ -249,7 +251,7 @@ void DiscorsWebProcessor::requestCnannelMessage(QString channelId, QString messa
     });
 }
 
-void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventType)
+void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventType)
 {
     if (reply->error() != QNetworkReply::NoError)
     {
@@ -278,6 +280,11 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
                 case Unknown: break;
             }
 
+            requestUserAvatar(message, eventType);
+
+            if(message->needLoadAttachmentImage)
+                requestAttachmentImage(message, eventType);
+
             //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
         }
 
@@ -289,6 +296,8 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
     {
         QJsonObject object = jsonDocument.object();
         auto message = parseMessage(&object);
+
+        message->needSendEvent = true;
 
         QList<Message*>* temp;
 
@@ -315,7 +324,12 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         if (!finded)
             temp->push_front(message);
 
-        emit sendEvent(message->id, eventType);
+        requestUserAvatar(message, eventType);
+
+        if(message->needLoadAttachmentImage)
+            requestAttachmentImage(message, eventType);
+        else
+            emit sendEvent(message->id, eventType);
 
         //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
     }
@@ -325,7 +339,7 @@ void DiscorsWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
     reply->deleteLater();
 }
 
-Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
+Message *DiscordWebProcessor::parseMessage(QJsonObject *message)
 {
     Message* newMessage = new Message();
 
@@ -365,7 +379,9 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
                 newMessage->attacmentImageId = attachmentObject.value("id").toString();
                 newMessage->attacmentImageUrl = attachmentObject.value("url").toString();
                 newMessage->attacmentImageWidth = attachmentObject.value("width").toInt();
-                newMessage->attacmentImageHeight = attachmentObject.value("height").toInt();
+                newMessage->attacmentImageHeight = attachmentObject.value("height").toInt();               
+                newMessage->attacmentImageType = contentType.replace("image/", "");
+                newMessage->needLoadAttachmentImage =true;
                 break;
             }
         }
@@ -401,7 +417,7 @@ Message *DiscorsWebProcessor::parseMessage(QJsonObject *message)
     return newMessage;
 }
 
-void DiscorsWebProcessor::removeMessage(QString messageId, QList<Message *> *messagesList)
+void DiscordWebProcessor::removeMessage(QString messageId, QList<Message *> *messagesList)
 {
     for(int i = 0; i < messagesList->count(); i++)
     {
@@ -414,7 +430,7 @@ void DiscorsWebProcessor::removeMessage(QString messageId, QList<Message *> *mes
     }
 }
 
-void DiscorsWebProcessor::connectDiscordWebsocket()
+void DiscordWebProcessor::connectDiscordWebsocket()
 {
     // m_discordWebSocket.open(QUrl("wss://gateway.discord.gg/?v=10&encoding=json"));
     m_discordWebSocket.open(QUrl(m_gateway.url));
@@ -423,7 +439,7 @@ void DiscorsWebProcessor::connectDiscordWebsocket()
     requestNextMessageGroupTimer.start();
 }
 
-void DiscorsWebProcessor::requestNextMessagesGroup()
+void DiscordWebProcessor::requestNextMessagesGroup()
 {
     if(m_messageGroupChannelId.isEmpty())
     {
@@ -451,7 +467,7 @@ void DiscorsWebProcessor::requestNextMessagesGroup()
     requestCnannelMessages(currentGroup, lastMessageId);
 }
 
-void DiscorsWebProcessor::receiveGateway(QNetworkReply *reply)
+void DiscordWebProcessor::receiveGateway(QNetworkReply *reply)
 {
     if (reply->error() != QNetworkReply::NoError)
     {
@@ -481,7 +497,7 @@ void DiscorsWebProcessor::receiveGateway(QNetworkReply *reply)
     reply->deleteLater();
 }
 
-void DiscorsWebProcessor::requestGateway()
+void DiscordWebProcessor::requestGateway()
 {
     QNetworkRequest newRequest;
 
@@ -501,22 +517,22 @@ void DiscorsWebProcessor::requestGateway()
     });
 }
 
-QList<Message *>* DiscorsWebProcessor::newsMessages()
+QList<Message *>* DiscordWebProcessor::newsMessages()
 {
     return &m_newsMessages;
 }
 
-QList<Message *>* DiscorsWebProcessor::eventMessages()
+QList<Message *>* DiscordWebProcessor::eventMessages()
 {
     return &m_eventMessages;
 }
 
-QList<Message *> *DiscorsWebProcessor::testMessages()
+QList<Message *> *DiscordWebProcessor::testMessages()
 {
     return &m_testMessages;
 }
 
-void DiscorsWebProcessor::sendHeartbeat()
+void DiscordWebProcessor::sendHeartbeat()
 {
     if (!m_discordWebSocketConnected)
         return;
@@ -525,7 +541,7 @@ void DiscorsWebProcessor::sendHeartbeat()
     m_discordWebSocket.sendTextMessage("{\"op\": " + QString::number(HertbeatMessge)+ ",\"d\":" + lastMessageS +"}");
 }
 
-void DiscorsWebProcessor::onDisconnected()
+void DiscordWebProcessor::onDisconnected()
 {
     qDebug() << "DiscorWebSocket Disconnected";
     m_discordWebSocketConnected = false;
@@ -537,7 +553,7 @@ void DiscorsWebProcessor::onDisconnected()
     m_reconnectTimer.start();
 }
 
-void DiscorsWebProcessor::reconnect()
+void DiscordWebProcessor::reconnect()
 {
     if (m_discordWebSocketConnected)
         return;
@@ -545,3 +561,162 @@ void DiscorsWebProcessor::reconnect()
     qDebug() << "Reconnect" << m_reconnectAdress;
     m_discordWebSocket.open(QUrl(m_reconnectAdress));
 }
+
+void DiscordWebProcessor::requestAttachmentImage(Message* message, EventType eventType)
+{
+    QFile imageFile(getAttachmentImagePath(message));
+
+    if (imageFile.exists())
+    {
+        message->attacmentImageUrl = getAttachmentImageUrl(message);
+        sendEventMessage(message, eventType);
+        return;
+    }
+
+    QNetworkRequest newRequest;
+
+    newRequest.setUrl(QUrl(message->attacmentImageUrl));
+
+    QNetworkReply *reply = m_networkManager->get(newRequest);
+
+    QObject::connect(reply, &QNetworkReply::finished, this, [=](){
+        receiveAttachmentImage(reply, message, eventType);
+    });
+}
+
+void DiscordWebProcessor::receiveAttachmentImage(QNetworkReply *reply, Message* message, EventType eventType)
+{
+    if (reply->error() != QNetworkReply::NoError)
+    {
+        qDebug() << "DiscordWebProcessor::receiveAttachmentImage:" << "Connection error:" << reply->errorString();
+        reply->deleteLater();
+        message->attachmentImageReady = true;
+        sendEventMessage(message, eventType);
+        return;
+    }
+
+    QByteArray replyByteArray = reply->readAll();
+
+    reply->deleteLater();
+
+    QFile imageFile(getAttachmentImagePath(message));
+
+    if (imageFile.open(QIODevice::ReadWrite))
+        imageFile.write(replyByteArray);
+
+    message->attacmentImageUrl = getAttachmentImageUrl(message);
+    message->attachmentImageReady = true;
+
+    sendEventMessage(message, eventType);
+}
+
+void DiscordWebProcessor::requestUserAvatar(Message* message, EventType eventType)
+{
+    QFile imageFile(getAavatarImagePath(message));
+
+    if (imageFile.exists())
+    {
+        message->avatarUrl = getAvatarImageUrl(message);
+        sendEventMessage(message, eventType);
+        return;
+    }
+
+    QNetworkRequest newRequest;
+    newRequest.setUrl(QUrl(message->avatarUrl));
+
+    QNetworkReply *reply = m_networkManager->get(newRequest);
+
+    QObject::connect(reply, &QNetworkReply::finished, this, [=](){
+        receiveUserAvatar(reply, message, eventType);
+    });
+}
+
+
+void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* message, EventType eventType)
+{
+    if (reply->error() != QNetworkReply::NoError)
+    {
+        qDebug() << "DiscordWebProcessor::receiveUserAvatar:" << "Connection error:" << reply->errorString();
+        reply->deleteLater();
+        message->avatarReady = true;
+        sendEventMessage(message, eventType);
+        return;
+    }
+
+    QByteArray replyByteArray = reply->readAll();
+
+    reply->deleteLater();
+
+    QFile imageFile(getAavatarImagePath(message));
+
+    if (imageFile.open(QIODevice::ReadWrite))
+        imageFile.write(replyByteArray);
+
+
+    message->avatarUrl = getAvatarImageUrl(message);
+    message->avatarReady = true;
+
+    updateAvatar(&m_newsMessages, message);
+    updateAvatar(&m_eventMessages, message);
+    updateAvatar(&m_testMessages, message);
+
+    sendEventMessage(message, eventType);
+}
+
+QString DiscordWebProcessor::getAttachmentImagePath(Message *message)
+{
+    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "images";
+    QDir dir;
+
+    if (!dir.exists(dirPath)) {
+        dir.mkdir(dirPath);
+    }
+
+    return dirPath + QDir::separator() + message->attacmentImageId + "." + message->attacmentImageType;
+}
+
+QString DiscordWebProcessor::getAttachmentImageUrl(Message *message)
+{
+    return "http://crosspick.ru/dow_stats_discord_web_service/images/" + message->attacmentImageId + "." + message->attacmentImageType;
+}
+
+QString DiscordWebProcessor::getAavatarImagePath(Message *message)
+{
+    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+    QDir dir;
+
+    if (!dir.exists(dirPath)) {
+        dir.mkdir(dirPath);
+    }
+
+    return dirPath + QDir::separator() + message->avatarId + ".png";
+}
+
+QString DiscordWebProcessor::getAvatarImageUrl(Message *message)
+{
+    return "http://crosspick.ru/dow_stats_discord_web_service/avatars/" + message->avatarId + ".png";
+}
+
+void DiscordWebProcessor::sendEventMessage(Message *message, EventType eventType)
+{
+    if (message->needSendEvent && message->attachmentImageReady && message->avatarReady)
+        emit sendEvent(message->id, eventType);
+}
+
+void DiscordWebProcessor::updateAvatar(QList<Message*>* messagesList, Message* message)
+{
+    for (auto& item : *messagesList)
+    {
+        if(item->userId == message->userId)
+        {
+            QFile imageFile(getAavatarImagePath(item));
+            if(imageFile.exists())
+                imageFile.remove();
+
+            item->userName = message->userName;
+            item->avatarId = message->avatarId;
+            item->avatarUrl = message->avatarUrl;
+        }
+    }
+}
+

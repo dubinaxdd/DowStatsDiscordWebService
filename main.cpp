@@ -6,10 +6,10 @@ int main(int argc, char *argv[])
 {
     QCoreApplication a(argc, argv);
 
-    DiscorsWebProcessor discorsWebProcessor;
+    DiscordWebProcessor discorsWebProcessor;
     NewsServer newsServer;
 
-    QObject::connect(&discorsWebProcessor, &DiscorsWebProcessor::sendEvent, &newsServer, &NewsServer::onEventReceived , Qt::QueuedConnection );
+    QObject::connect(&discorsWebProcessor, &DiscordWebProcessor::sendEvent, &newsServer, &NewsServer::onEventReceived , Qt::QueuedConnection );
 
     newsServer.setNewsMessagesListPtr(discorsWebProcessor.newsMessages());
     newsServer.setEventsMessagesListPtr(discorsWebProcessor.eventMessages());
