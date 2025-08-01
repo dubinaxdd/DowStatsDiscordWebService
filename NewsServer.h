@@ -37,6 +37,8 @@ public slots:
     void onClosed();
     void onEventReceived(QString messageId, EventType eventType);
 
+    void onDataReady();
+
 private:
     void sendLastMessagesId(QWebSocket* client);
     void sendMessagesFromIdByLimit(QWebSocket* client, EventType eventType, QString messageId, int limit, bool includeFirst, QList<Message*>* messagesListPtr);

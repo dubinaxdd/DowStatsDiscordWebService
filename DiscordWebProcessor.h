@@ -71,17 +71,20 @@ public:
 
 signals:
     void sendEvent(QString messageId, EventType eventType);
+    void dataReady();
 
 private slots:
     void readDiscordWebSocket(QString messgae);
     void sendHeartbeat();
     void onDisconnected();
     void reconnect();
-    void requestNextMessagesGroup();
+
     void receiveGateway(QNetworkReply* reply);
 
     void receiveUserAvatar(QNetworkReply* reply, Message *message, EventType eventType);
     void receiveAttachmentImage(QNetworkReply* reply, Message *message, EventType eventType);
+
+    void requestNextMessagesGroup();
 
 private:
     void requestGateway();
@@ -105,6 +108,12 @@ private:
 
     void updateAvatar(QList<Message *> *messagesList, Message* message);
 
+    bool checkAvatarExist(Message* message);
+    bool checkAttachmentImageExist(Message* message);
+
+    void requestNextAttachmentImage();
+    void requestNextAvatarImage();
+
 
 private:
     QNetworkAccessManager* m_networkManager;
@@ -127,10 +136,13 @@ private:
 
     QTimer m_reconnectTimer;
     QTimer requestNextMessageGroupTimer;
-    QStringList m_messageGroupChannelId = {TEST_CHANNEL_ID, EVENTS_CHANNEL_ID, NEWS_CHANNEL_ID};
+    QStringList m_messageGroupChannelId = {"IMAGES", "AVATARS", TEST_CHANNEL_ID, EVENTS_CHANNEL_ID, NEWS_CHANNEL_ID};
     bool m_readyToNextRequest = true;
 
     Gateway m_gateway;
+
+    QList<Message*> m_messagesForLoadAvatars;
+    QList<Message*> m_messagesForLoadImages;
 };
 
 #endif // DISCORDWEBPROCESSOR_H

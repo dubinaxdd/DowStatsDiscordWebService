@@ -8,7 +8,6 @@ NewsServer::NewsServer(QObject *parent)
     : QObject{parent}
     , m_server(new QWebSocketServer("DowStatsNewsService", QWebSocketServer::NonSecureMode, this))
 {
-    m_server->listen(QHostAddress::Any, 50789);
     connect(m_server, &QWebSocketServer::newConnection, this, &NewsServer::onNewConnection);
     connect(m_server, &QWebSocketServer::closed, this, &NewsServer::onClosed);
 }
@@ -120,6 +119,12 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
         [&](QWebSocket* item){
             item->sendTextMessage(text);
         });
+}
+
+void NewsServer::onDataReady()
+{
+    m_server->listen(QHostAddress::Any, 50789);
+    qDebug() << "Seervice started.";
 }
 
 void NewsServer::sendLastMessagesId(QWebSocket *client)

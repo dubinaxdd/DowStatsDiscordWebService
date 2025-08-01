@@ -10,6 +10,8 @@ int main(int argc, char *argv[])
     NewsServer newsServer;
 
     QObject::connect(&discorsWebProcessor, &DiscordWebProcessor::sendEvent, &newsServer, &NewsServer::onEventReceived , Qt::QueuedConnection );
+    QObject::connect(&discorsWebProcessor, &DiscordWebProcessor::dataReady, &newsServer, &NewsServer::onDataReady , Qt::QueuedConnection );
+
 
     newsServer.setNewsMessagesListPtr(discorsWebProcessor.newsMessages());
     newsServer.setEventsMessagesListPtr(discorsWebProcessor.eventMessages());

@@ -280,10 +280,11 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
                 case Unknown: break;
             }
 
-            requestUserAvatar(message, eventType);
+            if (!checkAvatarExist(message))
+                m_messagesForLoadAvatars.append(message);
 
-            if(message->needLoadAttachmentImage)
-                requestAttachmentImage(message, eventType);
+            if (message->needLoadAttachmentImage && !checkAttachmentImageExist(message))
+                m_messagesForLoadImages.append(message);
 
             //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
         }
@@ -324,12 +325,17 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         if (!finded)
             temp->push_front(message);
 
-        requestUserAvatar(message, eventType);
+        if (!checkAvatarExist(message))
+            requestUserAvatar(message, eventType);
+        else
+            message->avatarReady = true;
 
-        if(message->needLoadAttachmentImage)
+        if (!checkAttachmentImageExist(message) && message->needLoadAttachmentImage)
             requestAttachmentImage(message, eventType);
         else
-            emit sendEvent(message->id, eventType);
+            message->attachmentImageReady = true;
+
+        sendEventMessage(message, eventType);
 
         //qDebug() << m_messages.last()->id << m_messages.last()->timestamp << m_messages.last()->userId << m_messages.last()->userName << m_messages.last()->avatarId << m_messages.last()->avatarUrl << m_messages.last()->content << m_messages.last()->attacmentImageUrl;
     }
@@ -382,6 +388,7 @@ Message *DiscordWebProcessor::parseMessage(QJsonObject *message)
                 newMessage->attacmentImageHeight = attachmentObject.value("height").toInt();               
                 newMessage->attacmentImageType = contentType.replace("image/", "");
                 newMessage->needLoadAttachmentImage =true;
+
                 break;
             }
         }
@@ -444,6 +451,8 @@ void DiscordWebProcessor::requestNextMessagesGroup()
     if(m_messageGroupChannelId.isEmpty())
     {
         requestNextMessageGroupTimer.stop();
+        qDebug() << "All data received.";
+        emit dataReady();
         return;
     }
 
@@ -453,18 +462,38 @@ void DiscordWebProcessor::requestNextMessagesGroup()
     QString currentGroup = m_messageGroupChannelId.last();
     QString lastMessageId = "";
 
-    if (currentGroup == NEWS_CHANNEL_ID)
-        lastMessageId = m_newsLastMessageId;
 
-    if (currentGroup == EVENTS_CHANNEL_ID)
-        lastMessageId = m_eventsLastMessageId;
 
-    if (currentGroup == TEST_CHANNEL_ID)
-        lastMessageId = m_testLastMessageId;
+    if (currentGroup == "AVATARS" || currentGroup == "IMAGES")
+    {
+        qDebug() << "Request " << currentGroup << m_messagesForLoadAvatars.count() << m_messagesForLoadImages.count();
 
-    qDebug() << "RequestChannel messages" << currentGroup << lastMessageId;
-    bool m_readyToNextRequest = false;
-    requestCnannelMessages(currentGroup, lastMessageId);
+        if (currentGroup == "AVATARS")
+        {
+            requestNextMessageGroupTimer.setInterval(500);
+            requestNextAvatarImage();
+        }
+
+        if (currentGroup == "IMAGES")
+            requestNextAttachmentImage();
+    }
+    else
+    {
+        if (currentGroup == NEWS_CHANNEL_ID)
+            lastMessageId = m_newsLastMessageId;
+
+        if (currentGroup == EVENTS_CHANNEL_ID)
+            lastMessageId = m_eventsLastMessageId;
+
+        if (currentGroup == TEST_CHANNEL_ID)
+            lastMessageId = m_testLastMessageId;
+
+
+        m_readyToNextRequest = false;
+
+        qDebug() << "Request Channel messages" << currentGroup << lastMessageId;
+        requestCnannelMessages(currentGroup, lastMessageId);
+    }
 }
 
 void DiscordWebProcessor::receiveGateway(QNetworkReply *reply)
@@ -564,14 +593,7 @@ void DiscordWebProcessor::reconnect()
 
 void DiscordWebProcessor::requestAttachmentImage(Message* message, EventType eventType)
 {
-    QFile imageFile(getAttachmentImagePath(message));
-
-    if (imageFile.exists())
-    {
-        message->attacmentImageUrl = getAttachmentImageUrl(message);
-        sendEventMessage(message, eventType);
-        return;
-    }
+    m_readyToNextRequest = false;
 
     QNetworkRequest newRequest;
 
@@ -591,6 +613,7 @@ void DiscordWebProcessor::receiveAttachmentImage(QNetworkReply *reply, Message* 
         qDebug() << "DiscordWebProcessor::receiveAttachmentImage:" << "Connection error:" << reply->errorString();
         reply->deleteLater();
         message->attachmentImageReady = true;
+        m_readyToNextRequest = true;
         sendEventMessage(message, eventType);
         return;
     }
@@ -606,20 +629,14 @@ void DiscordWebProcessor::receiveAttachmentImage(QNetworkReply *reply, Message* 
 
     message->attacmentImageUrl = getAttachmentImageUrl(message);
     message->attachmentImageReady = true;
+    m_readyToNextRequest = true;
 
     sendEventMessage(message, eventType);
 }
 
 void DiscordWebProcessor::requestUserAvatar(Message* message, EventType eventType)
 {
-    QFile imageFile(getAavatarImagePath(message));
-
-    if (imageFile.exists())
-    {
-        message->avatarUrl = getAvatarImageUrl(message);
-        sendEventMessage(message, eventType);
-        return;
-    }
+    m_readyToNextRequest = false;
 
     QNetworkRequest newRequest;
     newRequest.setUrl(QUrl(message->avatarUrl));
@@ -639,6 +656,7 @@ void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* messa
         qDebug() << "DiscordWebProcessor::receiveUserAvatar:" << "Connection error:" << reply->errorString();
         reply->deleteLater();
         message->avatarReady = true;
+        m_readyToNextRequest = true;
         sendEventMessage(message, eventType);
         return;
     }
@@ -660,6 +678,7 @@ void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* messa
     updateAvatar(&m_eventMessages, message);
     updateAvatar(&m_testMessages, message);
 
+    m_readyToNextRequest = true;
     sendEventMessage(message, eventType);
 }
 
@@ -718,5 +737,74 @@ void DiscordWebProcessor::updateAvatar(QList<Message*>* messagesList, Message* m
             item->avatarUrl = message->avatarUrl;
         }
     }
+}
+
+bool DiscordWebProcessor::checkAvatarExist(Message *message)
+{
+    QFile imageFile(getAavatarImagePath(message));
+
+    if (imageFile.exists())
+    {
+        message->avatarUrl = getAvatarImageUrl(message);
+        return true;
+    }
+
+    return false;
+}
+
+bool DiscordWebProcessor::checkAttachmentImageExist(Message *message)
+{
+    QFile imageFile(getAttachmentImagePath(message));
+
+    if (imageFile.exists())
+    {
+        message->attacmentImageUrl = getAttachmentImageUrl(message);
+        return true;
+    }
+
+    return false;
+}
+
+void DiscordWebProcessor::requestNextAttachmentImage()
+{
+    if(m_messagesForLoadImages.isEmpty())
+    {
+        m_messageGroupChannelId.removeAll("IMAGES");
+        requestNextMessagesGroup();
+        return;
+    }
+
+    if (m_messagesForLoadImages.first()->needLoadAttachmentImage && !checkAttachmentImageExist(m_messagesForLoadImages.first()))
+    {
+        requestAttachmentImage(m_messagesForLoadImages.first(), AllMesagesReceive);
+        m_messagesForLoadImages.removeFirst();
+    }
+    else
+    {
+        m_messagesForLoadImages.removeFirst();
+        requestNextAttachmentImage();
+    }
+}
+
+void DiscordWebProcessor::requestNextAvatarImage()
+{
+    if(m_messagesForLoadAvatars.isEmpty())
+    {
+        m_messageGroupChannelId.removeAll("AVATARS");
+        requestNextMessagesGroup();
+        return;
+    }
+
+    if (!checkAvatarExist(m_messagesForLoadAvatars.first()))
+    {
+        requestUserAvatar(m_messagesForLoadAvatars.first(), AllMesagesReceive);
+        m_messagesForLoadAvatars.removeFirst();
+    }
+    else
+    {
+        m_messagesForLoadAvatars.removeFirst();
+        requestNextAvatarImage();
+    }
+
 }
 
