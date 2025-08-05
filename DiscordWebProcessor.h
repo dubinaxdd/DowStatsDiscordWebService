@@ -43,6 +43,7 @@ struct Message{
     bool needSendEvent = false;
     bool avatarReady = false;
     bool attachmentImageReady = false;
+    bool needUpdateAvatar = false;
 };
 
 class DiscordWebProcessor : public QObject

@@ -299,6 +299,7 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         auto message = parseMessage(&object);
 
         message->needSendEvent = true;
+        message->needUpdateAvatar = true;
 
         QList<Message*>* temp;
 
@@ -624,8 +625,11 @@ void DiscordWebProcessor::receiveAttachmentImage(QNetworkReply *reply, Message* 
 
     QFile imageFile(getAttachmentImagePath(message));
 
-    if (imageFile.open(QIODevice::ReadWrite))
+    if (imageFile.open(QIODevice::WriteOnly))
+    {
         imageFile.write(replyByteArray);
+        imageFile.close();
+    }
 
     message->attacmentImageUrl = getAttachmentImageUrl(message);
     message->attachmentImageReady = true;
@@ -667,16 +671,21 @@ void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* messa
 
     QFile imageFile(getAavatarImagePath(message));
 
-    if (imageFile.open(QIODevice::ReadWrite))
+    if (imageFile.open(QIODevice::WriteOnly))
+    {
         imageFile.write(replyByteArray);
-
+        imageFile.close();
+    }
 
     message->avatarUrl = getAvatarImageUrl(message);
     message->avatarReady = true;
 
-    updateAvatar(&m_newsMessages, message);
-    updateAvatar(&m_eventMessages, message);
-    updateAvatar(&m_testMessages, message);
+    if (message->needUpdateAvatar)
+    {
+        updateAvatar(&m_newsMessages, message);
+        updateAvatar(&m_eventMessages, message);
+        updateAvatar(&m_testMessages, message);
+    }
 
     m_readyToNextRequest = true;
     sendEventMessage(message, eventType);
@@ -805,6 +814,4 @@ void DiscordWebProcessor::requestNextAvatarImage()
         m_messagesForLoadAvatars.removeFirst();
         requestNextAvatarImage();
     }
-
 }
-

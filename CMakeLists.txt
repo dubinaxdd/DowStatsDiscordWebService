@@ -22,19 +22,26 @@ add_executable(DowStatsDiscordWebService
   BaseTypes.h
 )
 
-
 set( OPENSSL_ROOT_DIR ${OPENSSL_ROOT_DIR})
 #set( OPENSSL_ROOT_DIR "D:/Qt/6.9.0/Tools/OpenSSLv3/Win_x64")
 
-find_package(OpenSSL REQUIRED)
+if(LINUX)
+    set(OPENSSL_LIBS "/home/user/Qt6/Tools/OpenSSLv3/src/libcrypto.a" "/home/user/Qt6/Tools/OpenSSLv3/src/libssl.a")
+    target_link_libraries(DowStatsDiscordWebService ${OPENSSL_LIBS})
+else()
+    find_package(OpenSSL REQUIRED)
+
+    target_link_libraries(DowStatsDiscordWebService
+      OpenSSL::SSL
+      OpenSSL::Crypto
+    )
+endif()
+
 
 target_link_libraries(DowStatsDiscordWebService
   Qt${QT_VERSION_MAJOR}::Core
   Qt${QT_VERSION_MAJOR}::Network
   Qt${QT_VERSION_MAJOR}::WebSockets
-
-  OpenSSL::SSL
-  OpenSSL::Crypto
 )
 
 include(GNUInstallDirs)
