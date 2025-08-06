@@ -693,7 +693,8 @@ void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* messa
 
 QString DiscordWebProcessor::getAttachmentImagePath(Message *message)
 {
-    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "images";
+    //QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "images";
+    QString dirPath = "/ftp/crosspick-ftp/discord_web_service/images";
     QDir dir;
 
     if (!dir.exists(dirPath)) {
@@ -705,12 +706,17 @@ QString DiscordWebProcessor::getAttachmentImagePath(Message *message)
 
 QString DiscordWebProcessor::getAttachmentImageUrl(Message *message)
 {
-    return "http://crosspick.ru/dow_stats_discord_web_service/images/" + message->attacmentImageId + "." + message->attacmentImageType;
+    return "http://crosspick.ru/discord_web_service/images/" + message->attacmentImageId + "." + message->attacmentImageType;
 }
 
 QString DiscordWebProcessor::getAavatarImagePath(Message *message)
 {
-    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+    //QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+    QString dirPath = "/ftp/crosspick-ftp/discord_web_service/avatars";
+
+   // qDebug() << QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+    //qDebug() << dirPath;
+
     QDir dir;
 
     if (!dir.exists(dirPath)) {
@@ -722,7 +728,7 @@ QString DiscordWebProcessor::getAavatarImagePath(Message *message)
 
 QString DiscordWebProcessor::getAvatarImageUrl(Message *message)
 {
-    return "http://crosspick.ru/dow_stats_discord_web_service/avatars/" + message->avatarId + ".png";
+    return "http://crosspick.ru/discord_web_service/avatars/" + message->avatarId + ".png";
 }
 
 void DiscordWebProcessor::sendEventMessage(Message *message, EventType eventType)
