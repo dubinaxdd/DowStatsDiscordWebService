@@ -693,8 +693,12 @@ void DiscordWebProcessor::receiveUserAvatar(QNetworkReply *reply, Message* messa
 
 QString DiscordWebProcessor::getAttachmentImagePath(Message *message)
 {
-    //QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "images";
+#ifdef WIN32
+    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "images";
+#else
     QString dirPath = "/ftp/crosspick-ftp/discord_web_service/images";
+#endif
+
     QDir dir;
 
     if (!dir.exists(dirPath)) {
@@ -711,8 +715,11 @@ QString DiscordWebProcessor::getAttachmentImageUrl(Message *message)
 
 QString DiscordWebProcessor::getAavatarImagePath(Message *message)
 {
-    //QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+#ifdef WIN32
+    QString dirPath = QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
+#else
     QString dirPath = "/ftp/crosspick-ftp/discord_web_service/avatars";
+#endif
 
    // qDebug() << QCoreApplication::applicationDirPath() + QDir::separator() + "avatars";
     //qDebug() << dirPath;
