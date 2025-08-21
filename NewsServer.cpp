@@ -108,17 +108,22 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
         default: break;
     }
 
-
-
     QJsonDocument document;
     document.setObject(messageObject);
 
     QString text = document.toJson();
 
-    std::for_each( std::begin(m_clientsList), std::end(m_clientsList),
+
+    for (auto& client : m_clientsList )
+    {
+        client->sendTextMessage(text);
+    }
+
+
+    /*std::for_each( std::begin(m_clientsList), std::end(m_clientsList),
         [&](QWebSocket* item){
             item->sendTextMessage(text);
-        });
+        });*/
 }
 
 void NewsServer::onDataReady()

@@ -299,7 +299,7 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         auto message = parseMessage(&object);
 
         message->needSendEvent = true;
-        message->needUpdateAvatar = true;
+        message->needUpdateAvatar = false;
 
         QList<Message*>* temp;
 
@@ -311,6 +311,17 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
         case Unknown: break;
         }
 
+
+        //Если уже есть сообщения от этого пользователя, то нужно обновить аватар
+        for (auto& item : *temp) {
+            if(item->userId == message->userId)
+            {
+                message->needUpdateAvatar = true;
+                break;
+            }
+        }
+
+        //Если такое сообщение уже есть то нужно обновить сообщение
         bool finded = false;
 
         for (auto& item : *temp) {
@@ -323,6 +334,7 @@ void DiscordWebProcessor::receiveMessages(QNetworkReply *reply, EventType eventT
             }
         }
 
+        //Если сообщение не найдено - добавляем сообщение
         if (!finded)
             temp->push_front(message);
 
