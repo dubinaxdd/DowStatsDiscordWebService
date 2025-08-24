@@ -381,6 +381,10 @@ Message *DiscordWebProcessor::parseMessage(QJsonObject *message)
     QJsonObject authorObject = message->value("author").toObject();
     newMessage->userId = authorObject.value("id").toString();
     newMessage->userName = authorObject.value("global_name").toString();
+
+    if(newMessage->userName.isEmpty())
+        newMessage->userName = authorObject.value("username").toString();
+
     newMessage->avatarId = authorObject.value("avatar").toString();
     newMessage->avatarUrl = "https://cdn.discordapp.com/avatars/" + newMessage->userId + "/" + newMessage->avatarId + ".png";
 
@@ -760,9 +764,10 @@ void DiscordWebProcessor::updateAvatar(QList<Message*>* messagesList, Message* m
 {
     for (auto& item : *messagesList)
     {
-        if(item->userId == message->userId)
+        if(item->userId == message->userId && item->avatarId != message->avatarId && item->id != message->id)
         {
             QFile imageFile(getAavatarImagePath(item));
+
             if(imageFile.exists())
                 imageFile.remove();
 
