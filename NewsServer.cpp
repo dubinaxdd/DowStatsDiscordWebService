@@ -32,6 +32,8 @@ void NewsServer::onClientDisconnectd()
     QWebSocket *disconnectedClient = qobject_cast<QWebSocket *>(sender());
 
     if (disconnectedClient) {
+
+        disconnectedClient->close();
         m_clientsList.removeAll(disconnectedClient);
         disconnectedClient->deleteLater();
     }
@@ -116,7 +118,8 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
 
     for (auto& client : m_clientsList )
     {
-        client->sendTextMessage(text);
+        if (client && client->isValid() && client->state() == QAbstractSocket::SocketState::ConnectedState)
+            client->sendTextMessage(text);
     }
 
 
