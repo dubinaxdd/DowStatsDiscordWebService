@@ -77,10 +77,14 @@ void DiscordWebProcessor::sendResume()
 
 void DiscordWebProcessor::readDiscordWebSocket(QString messgae)
 {
-    QJsonDocument jsonDocument = QJsonDocument::fromJson(messgae.toLatin1());
+    QJsonParseError errorString;
+    QJsonDocument jsonDocument = QJsonDocument::fromJson(messgae.toUtf8(), &errorString);
 
     if (!jsonDocument.isObject())
+    {
+        qDebug() << "MessageParseError" << errorString.errorString();
         return;
+    }
 
     QJsonObject obeject = jsonDocument.object();
 
@@ -100,7 +104,6 @@ void DiscordWebProcessor::readDiscordWebSocket(QString messgae)
             m_heartbeatTimer.start();
 
             qDebug() << "INPUT DISCORD: HELLO" << lastMessageS;
-
 
             if (!m_isPlannedReconnect && m_isFirstConnect)
             {
