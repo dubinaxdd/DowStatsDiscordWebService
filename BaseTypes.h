@@ -19,7 +19,8 @@ enum EventType: int
     TestMessagesAnswer = 14,
     NewsMessagesEnd = 15,
     EventsMessagesEnd = 16,
-    TestMessagesEnd = 17
+    TestMessagesEnd = 17,
+    PingResponce = 18
 };
 
 #endif // BASETYPES_H

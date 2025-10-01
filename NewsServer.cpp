@@ -10,6 +10,9 @@ NewsServer::NewsServer(QObject *parent)
 {
     connect(m_server, &QWebSocketServer::newConnection, this, &NewsServer::onNewConnection);
     connect(m_server, &QWebSocketServer::closed, this, &NewsServer::onClosed);
+    connect(&m_checkTimeTimer, &QTimer::timeout, this, &NewsServer::checkClientsPingTime, Qt::QueuedConnection);
+
+    m_checkTimeTimer.setInterval(1000);
 }
 
 NewsServer::~NewsServer()
@@ -19,22 +22,34 @@ NewsServer::~NewsServer()
 
 void NewsServer::onNewConnection()
 {
-    QWebSocket *newSocket = m_server->nextPendingConnection();
+    Client newClient;
+    newClient.webSocket = m_server->nextPendingConnection();
 
-    connect(newSocket, &QWebSocket::textMessageReceived, this, &NewsServer::onMessageReceived);
-    connect(newSocket, &QWebSocket::disconnected, this, &NewsServer::onClientDisconnectd);
+    connect(newClient.webSocket, &QWebSocket::textMessageReceived, this, &NewsServer::onMessageReceived);
+    connect(newClient.webSocket, &QWebSocket::disconnected, this, &NewsServer::onClientDisconnectd);
 
-    m_clientsList.append(newSocket);
+    m_clientsList.append(std::move(newClient));
+    qDebug() << "CLIENT CONNECTED";
 }
 
 void NewsServer::onClientDisconnectd()
 {
+    qDebug() << "ASDASDASDASDASD ON DISCONNECTED";
     QWebSocket *disconnectedClient = qobject_cast<QWebSocket *>(sender());
 
     if (disconnectedClient) {
 
         disconnectedClient->close();
-        m_clientsList.removeAll(disconnectedClient);
+
+        for (int i = 0; i < m_clientsList.count(); i++) {
+            if(m_clientsList.at(i).webSocket == disconnectedClient)
+            {
+                m_clientsList.removeAt(i);
+                qDebug() << "CLIENT DISCONNECTED";
+                break;
+            }
+        }
+
         disconnectedClient->deleteLater();
     }
 }
@@ -63,6 +78,18 @@ void NewsServer::onMessageReceived(const QString &message)
     case RequestTestFromIdByLimit:
         sendMessagesFromIdByLimit(client, TestMessagesAnswer, jsonObject.value("messageId").toString(), jsonObject.value("limit").toInt(), jsonObject.value("includeFirst").toBool(), p_testMessages);
         break;
+    case Ping:{
+        for (int i = 0; i < m_clientsList.count(); i++) {
+            if(m_clientsList.at(i).webSocket == client)
+            {
+                m_clientsList[i].pingTime = 0;
+                break;
+            }
+        }
+
+        sendPingResponce(client);
+        break;
+    }
     }
 }
 
@@ -70,8 +97,8 @@ void NewsServer::onClosed()
 {
     for (auto& item : m_clientsList)
     {
-        if (item)
-            item->disconnect();
+        if (item.webSocket)
+            item.webSocket->disconnect();
     }
 }
 
@@ -118,8 +145,8 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
 
     for (auto& client : m_clientsList )
     {
-        if (client && client->isValid() && client->state() == QAbstractSocket::SocketState::ConnectedState)
-            client->sendTextMessage(text);
+        if (client.webSocket && client.webSocket->isValid() && client.webSocket->state() == QAbstractSocket::SocketState::ConnectedState)
+            client.webSocket->sendTextMessage(text);
     }
 
 
@@ -131,8 +158,24 @@ void NewsServer::onEventReceived(QString messageId, EventType eventType)
 
 void NewsServer::onDataReady()
 {
+    m_checkTimeTimer.start();
     m_server->listen(QHostAddress::Any, 50789);
     qDebug() << "Seervice started.";
+}
+
+void NewsServer::checkClientsPingTime()
+{
+    for(auto& item: m_clientsList)
+    {
+        item.pingTime++;
+
+        if (item.pingTime > 45)
+        {
+            qDebug() << "PING TIMEOUT";
+            if (item.webSocket)
+                item.webSocket->close();
+        }
+    }
 }
 
 void NewsServer::sendLastMessagesId(QWebSocket *client)
@@ -193,8 +236,6 @@ void NewsServer::sendMessagesFromIdByLimit(QWebSocket *client, EventType eventTy
 
     if (messagesArray.isEmpty())
     {
-
-
         EventType endListReplyType;
 
         switch (eventType) {
@@ -222,9 +263,28 @@ void NewsServer::sendMessagesFromIdByLimit(QWebSocket *client, EventType eventTy
     client->sendTextMessage(message.toJson().replace('\n',""));
 }
 
+void NewsServer::sendPingResponce(QWebSocket *client)
+{
+    QJsonObject messageObject;
+    messageObject.insert("op", PingResponce);
+
+    QJsonDocument message;
+    message.setObject(messageObject);
+
+    client->sendTextMessage(message.toJson().replace('\n',""));
+
+    qDebug() << "SEND PING RESPONCE";
+}
+
 QJsonObject NewsServer::messageToJson(Message * message)
 {
+
+
     QJsonObject contentObject;
+
+    if (!message)
+        return contentObject;
+
     contentObject.insert("id", message->id);
     contentObject.insert("timestamp", message->timestamp);
     contentObject.insert("content", message->content);
@@ -247,6 +307,8 @@ Message *NewsServer::findMessage(QString messageId, QList<Message *> *messagesLi
         if (item->id == messageId)
             return item;
     }
+
+    return nullptr;
 }
 
 void NewsServer::setNewsMessagesListPtr(QList<Message *> *newsMeessagesList)
